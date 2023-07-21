@@ -1,106 +1,106 @@
+import random
 import speech_recognition as sr
-from gtts import gTTS
-import os
-import tempfile
-import subprocess
-import pygame
+import pyttsx3
 import openai
 
-##############
-# 音声認識関数 #
-##############
-def recognize_speech():
+# OpenAIのトークンを設定
+openai.api_key = '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'
 
-    recognizer = sr.Recognizer()    
-    # Set timeout settings.
-    recognizer.dynamic_energy_threshold = False
+# マイクと音声合成エンジンの初期化
+recognizer = sr.Recognizer()
+engine = pyttsx3.init()
 
-    
-    with sr.Microphone() as source:
-        recognizer.adjust_for_ambient_noise(source)
-    
-        while(True):
-            print(">> Please speak now...")
-            audio = recognizer.listen(source, timeout=1000.0)
+# 生徒の回答タイプと確率分布
+answer_types = ['正確な回答', 'あいまいな回答', '間違った回答', '逆質問','トイレに行きたい']
+answer_probs = [1.0, 0.0, 0.0, 0.0, 0.0]
 
-            try:
-                # Google Web Speech API を使って音声をテキストに変換
-                text = recognizer.recognize_google(audio, language="ja-JP")
-                print("[You]")
-                print(text)
-                return text
-            except sr.UnknownValueError:
-                print("Sorry, I could not understand what you said. Please speak again.")
-            except sr.RequestError as e:
-                print(f"Could not request results; {e}")
+def generate_student_answer(question):
+    # 生徒の回答タイプをランダムに選択
+    answer_type = random.choices(answer_types, answer_probs)[0]
 
-#############################
-# 音声ファイル(mp3)再生用の関数 #
-#############################
-def play_mp3_blocking(file_path):
+    if answer_type == '正確な回答':
+        print("正確な回答")
+        # 正確な回答を生成
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "system", "content": "高校生の言葉づかいで質問に対して20文字以内で答えてください"},
+                      {"role": "user", "content": question}]
+        )
+        answer = response.choices[0].message.content.strip()
+    elif answer_type == 'あいまいな回答':
+        # あいまいな回答を生成
+        print("あいまいな回答")
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "system", "content": "一部あってる情報を入れて、間違った回答を20文字以内で答えてください"},
+                      {"role": "user", "content": question}]
+        )
+        answer = response.choices[0].message.content.strip()
+    elif answer_type == '間違った回答':
+        # 間違った回答を生成
+        print("間違った回答")
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "system", "content": "見当違いな回答を25文字で答えてください"},
+                      {"role": "user", "content": question}]
+        )
+        answer = response.choices[0].message.content.strip()
+    elif answer_type == '逆質問':
+        print("逆質問")
+        responses = [
+            "理解できないので、もう少し具体的な説明をお願いします。",
+            "よくわからないので、もうちょっと詳しく教えていただけませんか？",
+            "私には理解できないので、もう少し具体的な説明をお願いできますか？",
+            "理解できないので、もう少し詳細な情報を教えてもらえませんか？",
+            "よく分からないので、もう少し詳しい説明をお願いします。",
+            "わからないので補足してください。"
+        ]
+        answer = random.choice(responses)
+    elif answer_type == 'トイレに行きたい':
+        print("トイレ")
+        responses = [
+            "先生、すみませんがトイレに行きたいのですが、許可していただけますか？",
+            "先生、ちょっとトイレに行きたいんですけど、いいですか？",
+            "先生、すいませんがトイレに行きたくて…。",
+            "先生、トイレに行きたいのですが、お願いしてもいいですか？",
+            "先生、トイレに行ってもいいですか？お願いします。",
+            "すみません。おなかが痛いのでトイレに行っていいですか？"
+        ]
+        answer = random.choice(responses)
+    else:
+        # 間違った回答を生成
+        answer = "すみません。わからないです。"
 
-    pygame.init()
-    pygame.mixer.init()
-    mp3_file = pygame.mixer.Sound(file_path)    # MP3ファイルをロード
-    
-    print(">> Ready to Sppeach!")
-    mp3_file.play()     # MP3ファイルを再生
+    return answer
 
-    # 再生が終了するまで待つ(ブロッキング処理)
-    while pygame.mixer.get_busy():
-        pygame.time.Clock().tick(10)  # 10msごとに再生状態をチェック
+def speak(text):
+    # テキストを音声に変換して出力
+    engine.say(text)
+    engine.runAndWait()
 
-    pygame.mixer.quit()
-
-
-####################################################################################
-# Google Text-to-Speech(gTTS)を用いてChatGPTによるレスポンス(テキスト)を.mp3形式に変換する #
-####################################################################################
-def text_to_speech(text):
-
-    tts = gTTS(text=text, lang='ja', slow=False)
-    
-    with tempfile.NamedTemporaryFile(delete=True) as fp:
-        temp_filename = f"{fp.name}.mp3"
-        tts.save(temp_filename)
-
-        # 音声ファイル再生（ブロッキング処理）
-        play_mp3_blocking(temp_filename)
-
-
-
-# メインの関数
-if __name__ == '__main__':
-
-    # ChatGPTのセットアップ
-    openai.api_key="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"
-    # UserとChatGPTとの会話履歴を格納するリスト
-    conversationHistory = []
-
-    # Ctrl-Cで中断されるまでChatGPT音声アシスタントを起動
+def main():
     while True:
-        # 音声認識関数の呼び出し
-        text = recognize_speech()
+        # マイクからの音声入力
+        with sr.Microphone() as source:
+            print("質問を入力してください...")
+            audio = recognizer.listen(source)
 
-        if text:
-            print(" >> Waiting for response from ChatGPT...")
-            # ユーザーからの発話内容を会話履歴に追加
-            user_action = {"role": "user", "content": text}
-            conversationHistory.append(user_action)
-            
-            # ChatGPTからの応答を取得
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=conversationHistory, 
-            )
-            responce = response["choices"][0]["message"]["content"]
-            
-            # ChatGPTからの応答内容を会話履歴に追加
-            chatGPT_responce = {"role": "assistant", "content": responce}
-            conversationHistory.append(chatGPT_responce) 
+        try:
+            # 音声をテキストに変換
+            question = recognizer.recognize_google(audio, language='ja-JP')
+            print("質問:", question)
 
-            print("[ChatGPT]") #応答内容をコンソール出力
-            print(responce.strip()) #応答内容をコンソール出力
-            # # (step3) 音声合成関数の呼び出し("ChatGPTのレスポンス"を"mp3ファイル"に変換して再生)
-            print(">> Generating audio file....")
-            text_to_speech(responce)
+            # 生徒の回答生成
+            answer = generate_student_answer(question)
+            print("回答:", answer)
+
+            # 回答を音声で出力
+            speak(answer)
+
+        except sr.UnknownValueError:
+            print("聞き取れませんでした。もう一度お願いします。")
+        except sr.RequestError as e:
+            print("エラーが発生しました:", str(e))
+
+if __name__ == '__main__':
+    main()
